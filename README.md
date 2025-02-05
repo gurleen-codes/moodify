@@ -1,8 +1,8 @@
 # Moodify - Retro Edition
 
-A retro-styled mood-based music recommendation and journaling application that helps users discover music based on their emotions.
+A retro-styled mood-based music recommendation and journaling application that helps users discover music based on their emotions.*(if you have one)*
 
-![Retro UI Screenshot](images/image.png) *(if you have one)*
+![Retro UI Screenshot](images/image.png) 
 
 ## Features
 
