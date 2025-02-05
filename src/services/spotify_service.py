@@ -4,8 +4,15 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
 class SpotifyService(MusicService):
-    def __init__(self, credentials: Dict):
-        self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(**credentials))
+    def __init__(self, credentials: Dict[str, str]):
+        # Unpack credentials correctly for SpotifyOAuth
+        auth_manager = SpotifyOAuth(
+            client_id=credentials['client_id'],
+            client_secret=credentials['client_secret'],
+            redirect_uri=credentials['redirect_uri'],
+            scope='playlist-modify-public playlist-modify-private user-top-read'
+        )
+        self.sp = spotipy.Spotify(auth_manager=auth_manager)
 
     def generate_playlist(self, mood: str, intent: str) -> List[Dict]:
         # Basic implementation

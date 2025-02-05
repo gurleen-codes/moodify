@@ -2,7 +2,7 @@
 
 A retro-styled mood-based music recommendation and journaling application that helps users discover music based on their emotions.
 
-![Retro UI Screenshot](screenshot.png) *(if you have one)*
+![Retro UI Screenshot](moodify-draft/images/image.png) *(if you have one)*
 
 ## Features
 
