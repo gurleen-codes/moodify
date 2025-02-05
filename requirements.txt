@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+motor
+pymongo
+python-dotenv
+spotipy
+applemusicpy
+python-multipart  # for form data
+jinja2  # for templates
+aiofiles  # for static files 

@@ -1,6 +1,8 @@
-# Moodify
+# Moodify - Retro Edition
 
-A mood-based music recommendation and journaling application that helps users discover music based on their emotions and maintain a music-integrated mood journal.
+A retro-styled mood-based music recommendation and journaling application that helps users discover music based on their emotions.
+
+![Retro UI Screenshot](screenshot.png) *(if you have one)*
 
 ## Features
 
@@ -9,12 +11,13 @@ A mood-based music recommendation and journaling application that helps users di
 - 📝 Music-integrated journaling
 - 📊 Monthly mood and music analytics
 - 🤝 Anonymous sharing of music discoveries
+- 🖥️ Retro-styled user interface
 
 ## Prerequisites
 
 - Python 3.8+
 - Spotify Developer Account
-- PostgreSQL (optional, for production)
+- MongoDB (for data persistence)
 
 ## Setup
 
@@ -32,36 +35,87 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 3. Install dependencies:
 ```bash
-pip install fastapi uvicorn pydantic spotipy python-dotenv
+pip install fastapi uvicorn pydantic spotipy python-dotenv jinja2 motor python-multipart
 ```
 
-4. Set up Spotify:
+4. Set up MongoDB:
+```bash
+brew tap mongodb/brew
+brew install mongodb-community
+brew services start mongodb-community
+```
+
+5. Set up Spotify:
 - Create app at [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
 - Add `http://localhost:8000/callback` to Redirect URIs
 - Copy Client ID and Secret
 
-5. Create `.env` file:
+6. Create `.env` file:
 ```env
 SPOTIFY_CLIENT_ID=your_client_id_here
 SPOTIFY_CLIENT_SECRET=your_client_secret_here
 SPOTIFY_REDIRECT_URI=http://localhost:8000/callback
+MONGODB_URL=mongodb://localhost:27017
+MONGODB_DB_NAME=moodify
 ```
 
-6. Run the app:
+## Running the Application
+
+1. Start MongoDB (if not already running):
+```bash
+brew services start mongodb-community
+```
+
+2. Start the FastAPI server:
 ```bash
 uvicorn src.api.routes:app --reload
 ```
 
-5. View API docs at:
-- http://localhost:8000/docs
-- http://localhost:8000/redoc
+3. Visit:
+- Web Interface: `http://localhost:8000`
+- API Documentation: `http://localhost:8000/docs`
 
 ## Project Structure
 ```
 moodify/
 ├── src/
-│   ├── api/          # FastAPI routes & models
-│   └── core/         # Business logic
-├── .env              # Spotify credentials
-└── requirements.txt  # Dependencies
+│   ├── api/
+│   │   ├── routes.py      # FastAPI routes
+│   │   └── models.py      # Pydantic models
+│   ├── core/
+│   │   ├── mood_tracker.py    # Mood tracking
+│   │   ├── playlist_generator.py  # Spotify integration
+│   │   └── journal.py     # Journaling system
+│   ├── services/
+│   │   ├── music_service.py   # Music service interface
+│   │   ├── spotify_service.py # Spotify implementation
+│   │   └── factory.py     # Service factory
+│   ├── static/
+│   │   └── css/
+│   │       └── style.css  # Retro-styled CSS
+│   └── templates/
+│       ├── base.html      # Base template
+│       └── index.html     # Main page
+├── .env                   # Environment variables
+└── requirements.txt       # Dependencies
 ```
+
+## Tech Stack
+
+- FastAPI - Web framework
+- MongoDB - Database
+- Spotify API - Music recommendations
+- Jinja2 - Templating
+- Retro UI - Custom CSS styling
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

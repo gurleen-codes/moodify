@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Track Your Mood{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>MOODIFY</h1>
+    {% if message %}
+    <div class="message">{{ message }}</div>
+    {% endif %}
+    <div class="form-container">
+        <form method="POST" action="/mood">
+            <div class="mood-selector">
+                <h2>HOW ARE YOU FEELING?</h2>
+                <div class="mood-circles">
+                    <input type="radio" name="mood" id="HAPPY" value="HAPPY" required>
+                    <label for="HAPPY" class="mood-circle">
+                        <div class="mood-emoji">😊</div>
+                        <div class="mood-name">HAPPY</div>
+                        <div class="mood-desc">Feeling great and energetic!</div>
+                    </label>
+
+                    <input type="radio" name="mood" id="CALM" value="CALM">
+                    <label for="CALM" class="mood-circle">
+                        <div class="mood-emoji">😌</div>
+                        <div class="mood-name">CALM</div>
+                        <div class="mood-desc">Peaceful and relaxed</div>
+                    </label>
+
+                    <input type="radio" name="mood" id="NEUTRAL" value="NEUTRAL">
+                    <label for="NEUTRAL" class="mood-circle">
+                        <div class="mood-emoji">😐</div>
+                        <div class="mood-name">NEUTRAL</div>
+                        <div class="mood-desc">Just okay</div>
+                    </label>
+
+                    <input type="radio" name="mood" id="TENSE" value="TENSE">
+                    <label for="TENSE" class="mood-circle">
+                        <div class="mood-emoji">😰</div>
+                        <div class="mood-name">TENSE</div>
+                        <div class="mood-desc">Feeling stressed</div>
+                    </label>
+
+                    <input type="radio" name="mood" id="UPSET" value="UPSET">
+                    <label for="UPSET" class="mood-circle">
+                        <div class="mood-emoji">😢</div>
+                        <div class="mood-name">UPSET</div>
+                        <div class="mood-desc">Not feeling great</div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <input type="text" 
+                       name="context" 
+                       placeholder="TELL ME MORE ABOUT IT..."
+                       maxlength="500">
+            </div>
+
+            <div class="form-group">
+                <select name="service_type" required>
+                    <option value="" disabled selected>SELECT MUSIC SERVICE</option>
+                    <option value="spotify">SPOTIFY</option>
+                </select>
+            </div>
+
+            <button type="submit">GENERATE PLAYLIST</button>
+        </form>
+    </div>
+    <div class="setup-link">
+        <a href="/setup">CONFIGURE SPOTIFY</a>
+    </div>
+</div>
+{% endblock %} 

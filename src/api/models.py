@@ -150,4 +150,13 @@ class MonthlyReviewResponse(BaseModel):
                     "family": 5
                 }
             }
-        } 
+        }
+
+class MusicServiceEnum(str, Enum):
+    SPOTIFY = "spotify"
+    APPLE_MUSIC = "apple_music"
+    # Add more services as needed
+
+class UserPreferences(BaseModel):
+    preferred_service: MusicServiceEnum
+    service_credentials: Dict[str, str]

@@ -1,20 +1,39 @@
-from fastapi import FastAPI, HTTPException, Depends
-from typing import Dict, List
+from fastapi import FastAPI, HTTPException, Depends, Query, Request, Form
+from typing import Dict, List, Optional
 from datetime import datetime
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from bson import ObjectId
 from .models import (
     MoodRequest, PlaylistRequest, JournalRequest, 
-    MonthlyReviewResponse, IntentEnum
+    MonthlyReviewResponse, IntentEnum, MoodEnum, MusicServiceEnum
 )
 from ..core.mood_tracker import MoodTracker, MoodEntry, MoodLevel
 from ..core.playlist_generator import PlaylistGenerator
 from ..core.journal import JournalManager, JournalEntry
+from ..core.database import Database, Collections
+from ..services.music_service import MusicService
+from ..services.factory import MusicServiceFactory
+import os
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+from dotenv import load_dotenv, set_key
 
 app = FastAPI(title="Moodify API")
+
+# Dependency to get database instance
+async def get_db() -> AsyncIOMotorDatabase:
+    return await Database.get_db()
 
 # In-memory storage (replace with database in production)
 mood_tracker = MoodTracker()
 journal_manager = JournalManager()
 playlist_generator = None  # Will be initialized with Spotify credentials
+
+# Mount static files and templates
+BASE_DIR = Path(__file__).resolve().parent.parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 @app.on_event("startup")
 async def startup_event():
@@ -28,53 +47,113 @@ async def startup_event():
         "scope": "playlist-modify-private playlist-modify-public user-top-read"
     }
     playlist_generator = PlaylistGenerator(spotify_credentials)
+    await Database.connect_db()
 
-@app.post("/mood", response_model=Dict)
-async def record_mood(request: MoodRequest):
-    """
-    Record user's current mood
-    This corresponds to the first screen in your prototype
-    """
+@app.on_event("shutdown")
+async def shutdown_event():
+    await Database.close_db()
+
+@app.get("/")
+async def home(request: Request):
+    """Render the home page"""
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "moods": ["HAPPY", "CALM", "NEUTRAL", "TENSE", "UPSET"]
+        }
+    )
+
+@app.post("/mood")
+async def create_mood_and_playlist(
+    request: Request,
+    mood: str = Form(...),
+    context: str = Form(None),
+    service_type: str = Form(...)
+):
+    """Handle mood submission and playlist generation"""
     try:
-        mood_entry = MoodEntry(
-            mood=MoodLevel[request.mood],
-            context=request.context,
-            activities=request.activities,
-            tags=request.tags
+        # Create mood entry
+        mood_request = MoodRequest(
+            mood=mood,
+            context=context
         )
-        mood_tracker.add_entry(mood_entry)
-        return {"mood_id": str(mood_entry.timestamp.timestamp())}
+        
+        # Get service credentials
+        credentials = {}
+        if service_type == "spotify":
+            credentials = {
+                'client_id': os.getenv('SPOTIFY_CLIENT_ID'),
+                'client_secret': os.getenv('SPOTIFY_CLIENT_SECRET'),
+                'redirect_uri': os.getenv('SPOTIFY_REDIRECT_URI')
+            }
+            service_enum = MusicServiceEnum.SPOTIFY
+        else:
+            credentials = {
+                'key_id': os.getenv('APPLE_MUSIC_KEY_ID'),
+                'team_id': os.getenv('APPLE_MUSIC_TEAM_ID'),
+                'secret_key': os.getenv('APPLE_MUSIC_SECRET_KEY')
+            }
+            service_enum = MusicServiceEnum.APPLE_MUSIC
+        
+        # Generate playlist
+        music_service = MusicServiceFactory.get_service(service_enum, credentials)
+        generator = PlaylistGenerator(music_service)
+        playlist = await generator.generate_mood_playlist(
+            mood=mood,
+            intent=IntentEnum.IMPROVE,
+            context=context
+        )
+        
+        return templates.TemplateResponse(
+            "playlist.html",
+            {
+                "request": request,
+                "playlist": playlist,
+                "mood": mood
+            }
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/generate-playlist")
-async def generate_playlist(request: PlaylistRequest):
-    """
-    Generate playlist based on mood and intent
-    This handles the 'improve mood' vs 'relate to mood' choice
-    """
+@app.post("/playlists")
+async def create_mood_playlist(
+    request: PlaylistRequest,
+    service_type: MusicServiceEnum,
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
     try:
-        # Find the mood entry
-        entries = [e for e in mood_tracker.entries 
-                  if str(e.timestamp.timestamp()) == request.mood_id]
-        if not entries:
-            raise HTTPException(status_code=404, detail="Mood entry not found")
+        # Get appropriate credentials based on service type
+        if service_type == MusicServiceEnum.SPOTIFY:
+            credentials = {
+                'client_id': os.getenv('SPOTIFY_CLIENT_ID'),
+                'client_secret': os.getenv('SPOTIFY_CLIENT_SECRET'),
+                'redirect_uri': os.getenv('SPOTIFY_REDIRECT_URI')
+            }
+        else:  # Apple Music
+            credentials = {
+                'key_id': os.getenv('APPLE_MUSIC_KEY_ID'),
+                'team_id': os.getenv('APPLE_MUSIC_TEAM_ID'),
+                'secret_key': os.getenv('APPLE_MUSIC_SECRET_KEY')
+            }
         
-        mood_entry = entries[0]
-        playlist_id = playlist_generator.create_playlist(
-            user_id="user_id",  # Get from auth
-            mood_entry=mood_entry,
-            intent=request.intent
+        music_service = MusicServiceFactory.get_service(service_type, credentials)
+        generator = PlaylistGenerator(music_service)
+        
+        playlist = await generator.generate_mood_playlist(
+            mood=request.mood,
+            intent=request.intent,
+            context=request.context
         )
         
-        # Update mood entry with playlist
-        mood_entry.playlist_id = playlist_id
+        await db[Collections.PLAYLISTS].insert_one({
+            'mood_id': request.mood_id,
+            'service_type': service_type,
+            'playlist_data': playlist,
+            'timestamp': datetime.now()
+        })
         
-        return {
-            "playlist_id": playlist_id,
-            "mood": mood_entry.mood.name,
-            "intent": request.intent
-        }
+        return playlist
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -147,4 +226,152 @@ async def share_entry(entry_id: str):
         }
         return shared_data
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e)) 
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/moods")
+async def get_moods(
+    start_date: Optional[datetime] = Query(None, description="Filter moods from this date"),
+    end_date: Optional[datetime] = Query(None, description="Filter moods until this date"),
+    mood_type: Optional[MoodEnum] = Query(None, description="Filter by specific mood"),
+    tags: Optional[List[str]] = Query(None, description="Filter by tags"),
+    limit: int = Query(10, description="Number of entries to return", ge=1, le=100),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get mood entries with filtering options"""
+    try:
+        # Build query filter
+        filter_query = {}
+        if start_date or end_date:
+            filter_query["timestamp"] = {}
+            if start_date:
+                filter_query["timestamp"]["$gte"] = start_date
+            if end_date:
+                filter_query["timestamp"]["$lte"] = end_date
+        
+        if mood_type:
+            filter_query["mood"] = mood_type
+            
+        if tags:
+            filter_query["tags"] = {"$in": tags}
+            
+        # Execute query
+        cursor = db[Collections.MOODS].find(filter_query)
+        cursor = cursor.sort("timestamp", -1).limit(limit)
+        
+        # Convert to list
+        moods = await cursor.to_list(length=limit)
+        
+        # Convert ObjectId to string
+        for mood in moods:
+            mood["_id"] = str(mood["_id"])
+            
+        return {"moods": moods}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.put("/moods/{mood_id}")
+async def update_mood(
+    mood_id: str,
+    request: MoodRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Update an existing mood entry"""
+    try:
+        update_data = {
+            "$set": {
+                "mood": request.mood,
+                "context": request.context,
+                "activities": request.activities,
+                "tags": request.tags
+            }
+        }
+        
+        result = await db[Collections.MOODS].update_one(
+            {"_id": ObjectId(mood_id)},
+            update_data
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Mood not found")
+            
+        return {
+            "status": "success",
+            "mood_id": mood_id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/moods/{mood_id}")
+async def delete_mood(
+    mood_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Delete a mood entry"""
+    try:
+        result = await db[Collections.MOODS].delete_one({"_id": ObjectId(mood_id)})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Mood not found")
+            
+        return {
+            "status": "success",
+            "message": f"Mood entry {mood_id} deleted"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/moods/{mood_id}")
+async def get_mood(
+    mood_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get a specific mood entry"""
+    try:
+        mood = await db[Collections.MOODS].find_one({"_id": ObjectId(mood_id)})
+        if not mood:
+            raise HTTPException(status_code=404, detail="Mood not found")
+            
+        mood["_id"] = str(mood["_id"])
+        return mood
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/setup")
+async def setup_page(request: Request):
+    """Show the setup page"""
+    return templates.TemplateResponse(
+        "setup.html",
+        {"request": request}
+    )
+
+@app.post("/setup/spotify")
+async def setup_spotify(
+    request: Request,
+    client_id: str = Form(...),
+    client_secret: str = Form(...)
+):
+    """Save Spotify credentials"""
+    try:
+        # Update .env file
+        env_path = os.path.join(os.path.dirname(BASE_DIR), '.env')
+        
+        # Set the new values
+        set_key(env_path, 'SPOTIFY_CLIENT_ID', client_id)
+        set_key(env_path, 'SPOTIFY_CLIENT_SECRET', client_secret)
+        
+        # Reload environment variables
+        load_dotenv(env_path, override=True)
+        
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "moods": ["HAPPY", "CALM", "NEUTRAL", "TENSE", "UPSET"],
+                "message": "Spotify credentials saved successfully!"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to save credentials: {str(e)}"
+        )
